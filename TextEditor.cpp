@@ -334,6 +334,24 @@ void TextEditor::Redo(int aSteps)
 		mUndoBuffer[mUndoIndex++].Redo(this);
 }
 
+unsigned int TextEditor::AddPopup(PopupTypeId aPopupType, const unsigned int aLine, const std::string& aHeader, const std::string& aText) {
+	// Get first free index in queue
+	unsigned int free = 1;
+	for (auto it = mPopups.cbegin(), end = mPopups.cend();
+			it != end && free == it->first; ++it, ++free) {}
+	Popup popup{aPopupType, aLine, aHeader, aText};
+	mPopups.insert(std::make_pair(free, popup));
+	return free;
+}
+
+void TextEditor::RemovePopup(const unsigned int aPopupId) {
+	mPopups.erase(aPopupId);
+}
+
+void TextEditor::ClearPopups() {
+	mPopups.clear();
+}
+
 void TextEditor::SetText(const std::string& aText)
 {
 	mLines.clear();
@@ -2248,6 +2266,8 @@ void TextEditor::Render(bool aParentIsFocused)
 		auto drawList = ImGui::GetWindowDrawList();
 		float spaceSize = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, -1.0f, " ", nullptr, nullptr).x;
 
+		Popup* currentPopup = nullptr;
+
 		for (int lineNo = mFirstVisibleLine; lineNo <= mLastVisibleLine && lineNo < mLines.size(); lineNo++)
 		{
 			ImVec2 lineStartScreenPos = ImVec2(cursorScreenPos.x, cursorScreenPos.y + lineNo * mCharAdvance.y);
@@ -2391,6 +2411,43 @@ void TextEditor::Render(bool aParentIsFocused)
 
 				MoveCharIndexAndColumn(lineNo, charIndex, column);
 			}
+
+			// Render popup highlights and add popups to render queue
+			for (auto& [id, popup] : mPopups) {
+				if (popup.mLine == lineNo) {
+					PaletteIndex color = popup.mType == PopupTypeId::Error ? PaletteIndex::ErrorMarker : PaletteIndex::WarningMarker;
+					ImVec2 topLeft = { lineStartScreenPos.x + mTextStart, lineStartScreenPos.y };
+					ImVec2 bottomRight = { topLeft.x + mCharAdvance.x * (mLastVisibleColumn-mFirstVisibleColumn), topLeft.y + mCharAdvance.y };
+					drawList->AddRectFilled(topLeft, bottomRight, mPalette[(int)color]);
+
+					ImVec2 mousePos = ImGui::GetMousePos();
+					bool cursorInError = mousePos.x > topLeft.x && mousePos.x < bottomRight.x && mousePos.y > topLeft.y && mousePos.y < bottomRight.y;
+					if (cursorInError) {
+						currentPopup = &popup;
+					}
+				}
+			}
+		}
+		// Render actual popup
+		if (currentPopup) {
+			std::size_t textLength = std::max(currentPopup->mText.length(), currentPopup->mHeader.length());
+
+			ImVec2 infoTopLeft = { ImGui::GetMousePos().x + fontWidth * 3.0f, ImGui::GetMousePos().y + fontHeight };
+			ImVec2 infoBottomRight = { infoTopLeft.x + mCharAdvance.x * ((float)textLength + 1.0f), infoTopLeft.y + mCharAdvance.y * 2.5f };
+
+			ImVec2 infoHeader = { infoTopLeft.x + mCharAdvance.x * 0.5f, infoTopLeft.y + mCharAdvance.y * 0.25f };
+			ImVec2 infoText = { infoTopLeft.x + mCharAdvance.x * 0.5f, infoTopLeft.y + mCharAdvance.y * 1.25f };
+
+			ImVec2 infoSeparatorTopLeft = { infoHeader.x, infoHeader.y + mCharAdvance.y };
+			ImVec2 infoSeparatorBottomRight = { infoSeparatorTopLeft.x + mCharAdvance.x * textLength, infoSeparatorTopLeft.y + 2.0f };
+
+			PaletteIndex color = currentPopup->mType == PopupTypeId::Error ? PaletteIndex::ErrorMarker : PaletteIndex::WarningMarker;
+
+			drawList->AddRectFilled(infoTopLeft, infoBottomRight, mPalette[(int)PaletteIndex::Background], fontHeight/3.0f, ImDrawFlags_RoundCornersAll);
+			drawList->AddRect(infoTopLeft, infoBottomRight, mPalette[(int)PaletteIndex::CurrentLineEdge], fontHeight/3.0f, ImDrawFlags_RoundCornersAll);
+			drawList->AddRectFilled(infoSeparatorTopLeft, infoSeparatorBottomRight, mPalette[(int)PaletteIndex::CurrentLineEdge]);
+			drawList->AddText(infoHeader, mPalette[(int)color], currentPopup->mHeader.c_str());
+			drawList->AddText(infoText, mPalette[(int)PaletteIndex::Default], currentPopup->mText.c_str());
 		}
 	}
 	mCurrentSpaceHeight = (mLines.size() + Min(mVisibleLineCount - 1, (int)mLines.size())) * mCharAdvance.y;
@@ -2845,6 +2902,7 @@ const TextEditor::Palette& TextEditor::GetDarkPalette()
 			0xe0e0e0ff, // Cursor
 			0x2060a080, // Selection
 			0xff200080, // ErrorMarker
+			0xffac0080, // WarningMarker
 			0xffffff15, // ControlCharacter
 			0x0080f040, // Breakpoint
 			0x7a8394ff, // Line number
@@ -2874,6 +2932,7 @@ const TextEditor::Palette& TextEditor::GetMarianaPalette()
 			0xe0e0e0ff, // Cursor
 			0x6e7a8580, // Selection
 			0xec5f6680, // ErrorMarker
+			0xecb15f80, // WarningMarker
 			0xffffff30, // ControlCharacter
 			0x0080f040, // Breakpoint
 			0xffffffb0, // Line number
@@ -2903,6 +2962,7 @@ const TextEditor::Palette& TextEditor::GetLightPalette()
 			0x000000ff, // Cursor
 			0x00006040, // Selection
 			0xff1000a0, // ErrorMarker
+			0xffc200a0, // WarningMarker
 			0x90909090, // ControlCharacter
 			0x0080f080, // Breakpoint
 			0x005050ff, // Line number
@@ -2932,6 +2992,7 @@ const TextEditor::Palette& TextEditor::GetRetroBluePalette()
 			0xff8000ff, // Cursor
 			0x00ffff80, // Selection
 			0xff0000a0, // ErrorMarker
+			0xffaa00a0, // WarningMarker
 			0x0080ff80, // Breakpoint
 			0x008080ff, // Line number
 			0x00000040, // Current line fill

@@ -32,6 +32,10 @@ public:
 	{
 		FirstVisibleLine, Centered, LastVisibleLine
 	};
+	enum class PopupTypeId
+	{
+		Warning, Error
+	};
 
 	inline void SetReadOnlyEnabled(bool aValue) { mReadOnly = aValue; }
 	inline bool IsReadOnlyEnabled() const { return mReadOnly; }
@@ -85,6 +89,10 @@ public:
 	inline bool CanUndo() const { return !mReadOnly && mUndoIndex > 0; };
 	inline bool CanRedo() const { return !mReadOnly && mUndoIndex < (int)mUndoBuffer.size(); };
 	inline int GetUndoIndex() const { return mUndoIndex; };
+
+	unsigned int AddPopup(PopupTypeId aPopupType, const unsigned int line, const std::string& header, const std::string& text);
+	void RemovePopup(const unsigned int aPopupId);
+	void ClearPopups();
 
 	void SetText(const std::string& aText);
 	std::string GetText() const;
@@ -144,6 +152,7 @@ private:
 		Cursor,
 		Selection,
 		ErrorMarker,
+		WarningMarker,
 		ControlCharacter,
 		Breakpoint,
 		LineNumber,
@@ -293,6 +302,15 @@ private:
 		static const LanguageDefinition& Json();
 	};
 
+	struct Popup
+	{
+		PopupTypeId mType;
+		unsigned int mLine;
+		std::string mHeader;
+		std::string mText;
+	};
+
+
 	enum class UndoOperationType { Add, Delete };
 	struct UndoOperation
 	{
@@ -322,6 +340,7 @@ private:
 		EditorState mBefore;
 		EditorState mAfter;
 	};
+
 
 	std::string GetText(const Coordinates& aStart, const Coordinates& aEnd) const;
 	std::string GetClipboardText() const;
@@ -406,6 +425,8 @@ private:
 	EditorState mState;
 	std::vector<UndoRecord> mUndoBuffer;
 	int mUndoIndex = 0;
+
+	std::map<unsigned int, Popup> mPopups;
 
 	int mTabSize = 4;
 	float mLineSpacing = 1.0f;
